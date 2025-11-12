@@ -5,7 +5,7 @@
 #include "proc.h"
 #include "mem.h"
 
-void static DisplayInterface(bool bHealth, bool bAmmo, bool bRecoil, int currentTeam)
+void static DisplayInterface(bool bHealth, bool bAmmo, bool bRecoil, bool bSpeed, int currentTeam)
 {
     system("cls");
 
@@ -18,6 +18,7 @@ void static DisplayInterface(bool bHealth, bool bAmmo, bool bRecoil, int current
     std::cout << "[NUMPAD2] Unlimited Ammo -> " << (bAmmo ? "ON" : "OFF") << " <-\n";
     std::cout << "[NUMPAD3] No Recoil -> " << (bRecoil ? "ON" : "OFF") << " <-\n";
     std::cout << "[NUMPAD4] Switch Team - Current: -> " << (currentTeam == 0 ? "RED" : "BLUE") << " <-\n";
+    std::cout << "[NUMPAD5] Set 3x Run Speed -> " << (bSpeed ? "ON" : "OFF") << " <-\n";
     std::cout << "[INSERT] Exit\n";
     std::cout << "========================================\n";
 }
@@ -27,12 +28,12 @@ int main()
     // Initialize variables
     HANDLE hProcess = 0;
     uintptr_t moduleBase = 0, localPlayerPtr = 0, healthAddr = 0, teamAddr = 0;
-    bool bHealth = false, bAmmo = false, bRecoil = false;
+    bool bHealth = false, bAmmo = false, bRecoil = false, bSpeed = false;
     int currentTeam = 0;
     const int newValue = 9999;
 
     // Initialize last variables (for refreshing the interface)
-    bool lastHealth = false, lastAmmo = false, lastRecoil = false, lastTeam = 0;
+    bool lastHealth = false, lastAmmo = false, lastRecoil = false, lastSpeed = false, lastTeam = 0;
 
     // Get ProcId of the target process
     DWORD procId = GetProcId(L"ac_client.exe");
@@ -65,18 +66,19 @@ int main()
     }
     
     // Display initial interface
-    DisplayInterface(bHealth, bAmmo, bRecoil, currentTeam);
+    DisplayInterface(bHealth, bAmmo, bRecoil, bSpeed, currentTeam);
     
     DWORD dwExit = 0;
     while (GetExitCodeProcess(hProcess, &dwExit) && dwExit == STILL_ACTIVE)
     {
         // Refresh the interface if any of the options have changed
-        if (bHealth != lastHealth || bAmmo != lastAmmo || bRecoil != lastRecoil || currentTeam != lastTeam)
+        if (bHealth != lastHealth || bAmmo != lastAmmo || bRecoil != lastRecoil || bSpeed != lastSpeed || currentTeam != lastTeam)
         {
-            DisplayInterface(bHealth, bAmmo, bRecoil, currentTeam);
+            DisplayInterface(bHealth, bAmmo, bRecoil, bSpeed, currentTeam);
             lastHealth = bHealth;
             lastAmmo = bAmmo;
             lastRecoil = bRecoil;
+            lastSpeed = bSpeed;
             lastTeam = currentTeam;
         }
         
@@ -131,6 +133,22 @@ int main()
             ReadProcessMemory(hProcess, (BYTE*)teamAddr, &currentTeam, sizeof(int), nullptr);
         }
         
+        // Toggle 3x run speed
+        if (GetAsyncKeyState(VK_NUMPAD5) & 1) {
+            bSpeed = !bSpeed;
+            if (bSpeed) {
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BEA0), (BYTE*)"\xB8\x03\x00\x00\x00", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BE40), (BYTE*)"\xB8\xFD\xFF\xFF\xFF", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BF00), (BYTE*)"\xB8\x03\x00\x00\x00", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BF60), (BYTE*)"\xB8\xFD\xFF\xFF\xFF", 5, hProcess);
+            }
+            else {
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BEA0), (BYTE*)"\xB8\x01\x00\x00\x00", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BE40), (BYTE*)"\xB8\xFF\xFF\xFF\xFF", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BF00), (BYTE*)"\xB8\x01\x00\x00\x00", 5, hProcess);
+                mem::PatchEx((BYTE*)(moduleBase + 0x5BF60), (BYTE*)"\xB8\xFF\xFF\xFF\xFF", 5, hProcess);
+            }
+        }
         // Exit loop
         if (GetAsyncKeyState(VK_INSERT) & 1)
         {
